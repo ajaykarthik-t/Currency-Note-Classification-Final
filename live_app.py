@@ -2,11 +2,11 @@ import cv2
 import numpy as np
 import streamlit as st
 from keras.models import load_model
-from gtts import gTTS
-import os
+import pyttsx3
 
 # Load the trained model
-model = load_model('my_model.keras')
+MODEL_PATH = "my_model.h5"  # Updated model name
+model = load_model(MODEL_PATH)
 
 # Define class-specific messages
 class_messages = {
@@ -18,41 +18,42 @@ class_messages = {
     5: "You have a 200 rupees note."
 }
 
-# Function to convert text to speech and save as an audio file
-def speak_message(message):
-    tts = gTTS(text=message, lang='en')
-    tts.save("output.mp3")  # Save the audio file
-    st.audio("output.mp3", format="audio/mp3")  # Play the audio in Streamlit
+# Initialize text-to-speech engine
+tts_engine = pyttsx3.init()
 
-# Function to preprocess the image
+def speak_message(message):
+    """Function to speak a given message."""
+    tts_engine.say(message)
+    tts_engine.runAndWait()
+
 def preprocess_frame(frame):
+    """Preprocesses the image for model prediction."""
     frame_resized = cv2.resize(frame, (224, 224))
     frame_array = np.array(frame_resized, dtype="float32") / 255.0
     frame_array = np.expand_dims(frame_array, axis=0)
     return frame_array
 
 # Streamlit UI
-st.title("Currency Note Detection for Visually Impaired Users")
+st.title("💵 Currency Note Detection for Visually Impaired Users")
+st.write("Place a currency note in front of the camera to identify it.")
 
 # Access webcam
 stframe = st.empty()
 cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
-    st.error("Error: Could not access the webcam.")
+    st.error("🚨 Error: Could not access the webcam.")
 else:
-    while True:
+    while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
-            st.error("Failed to grab frame.")
+            st.error("❌ Failed to grab frame.")
             break
 
         # Extract ROI (central area of the image)
         height, width, _ = frame.shape
-        roi_x1 = int(width * 0.3)
-        roi_y1 = int(height * 0.3)
-        roi_x2 = int(width * 0.7)
-        roi_y2 = int(height * 0.7)
+        roi_x1, roi_y1 = int(width * 0.3), int(height * 0.3)
+        roi_x2, roi_y2 = int(width * 0.7), int(height * 0.7)
         roi = frame[roi_y1:roi_y2, roi_x1:roi_x2]
 
         # Preprocess the ROI
@@ -63,10 +64,10 @@ else:
         predicted_class_index = np.argmax(predictions)
         confidence = np.max(predictions)
 
-        if confidence < 0.6:  # Threshold to determine if it's a valid note
-            predicted_message = "Please show a currency note."
+        if confidence < 0.6:  # Confidence threshold for valid notes
+            predicted_message = "Please show a valid currency note."
         else:
-            predicted_message = class_messages[predicted_class_index]
+            predicted_message = class_messages.get(predicted_class_index, "Unknown currency note.")
 
         # Draw ROI and prediction on frame
         cv2.rectangle(frame, (roi_x1, roi_y1), (roi_x2, roi_y2), (0, 255, 0), 2)
@@ -75,8 +76,8 @@ else:
         # Display result in Streamlit
         stframe.image(frame, channels="BGR")
         st.success(predicted_message)
-
-        # Announce result using gTTS
+        
+        # Announce result
         speak_message(predicted_message)
 
 cap.release()
